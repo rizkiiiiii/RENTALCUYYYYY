@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -15,11 +14,15 @@ class User extends Authenticatable
 
     // KUNCI PERBAIKAN DI SINI:
     // Kita pakai guarded id saja agar kolom lain (role, admin_type, dll) bisa diisi otomatis
-    protected $guarded = ['id']; 
+    protected $guarded = ['id'];
 
-    /**
-     * Bagian $fillable DIHAPUS saja agar tidak membatasi kolom role, admin_type, dll.
-     */
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+        'avatar', // <--- PASTIIN INI ADA!
+                  // 'role',   // (Kalau ada kolom role)
+    ];
 
     /**
      * The attributes that should be hidden for serialization.
@@ -40,7 +43,7 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
-            'password' => 'hashed',
+            'password'          => 'hashed',
         ];
     }
 }

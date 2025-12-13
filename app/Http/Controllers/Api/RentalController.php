@@ -10,6 +10,17 @@ use Illuminate\Http\Request; // Kita pakai Request bawaan aja
 
 class RentalController extends Controller
 {
+    // USER: Lihat riwayat booking milik sendiri
+    public function index(Request $request)
+    {
+        // Ambil data rental CUMA milik user yang lagi login
+        $rentals = Rental::with('car') // Bawa data mobilnya juga
+            ->where('user_id', $request->user()->id)
+            ->latest() // Urutkan dari yang terbaru
+            ->get();
+
+        return response()->json($rentals);
+    }
     // ADMIN: Lihat semua transaksi
     public function indexAdmin()
     {
@@ -77,5 +88,25 @@ class RentalController extends Controller
         }
 
         return response()->json($rental);
+    }
+    public function destroy(string $id)
+    {
+        // Cari data rental berdasarkan ID
+        $rental = Rental::find($id);
+
+        // Cek apakah data ada?
+        if (!$rental) {
+            return response()->json(['message' => 'Data not found'], 404);
+        }
+
+        // (Opsional) Cek apakah status masih pending? Biar gak bisa cancel kalau udah dipake
+        if ($rental->status !== 'pending') {
+            return response()->json(['message' => 'Tidak bisa membatalkan pesanan yang sedang berjalan/selesai'], 400);
+        }
+
+        // Hapus data
+        $rental->delete();
+
+        return response()->json(['message' => 'Booking cancelled successfully']);
     }
 }
