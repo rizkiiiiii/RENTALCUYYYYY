@@ -5,8 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Rental;
 use App\Models\Car;
-use Illuminate\Http\Request; // Kita pakai Request bawaan aja
-// use App\Http\Requests\StoreRentalRequest; // <-- KITA BUANG INI BIAR GAK RIBET
+use Illuminate\Http\Request;
 
 class RentalController extends Controller
 {
@@ -14,40 +13,60 @@ class RentalController extends Controller
     public function index(Request $request)
     {
         // Ambil data rental CUMA milik user yang lagi login
-        $rentals = Rental::with('car') // Bawa data mobilnya juga
+        $rentals = Rental::with(['car', 'car.brand']) // Eager load brand juga biar lengkap
             ->where('user_id', $request->user()->id)
-            ->latest() // Urutkan dari yang terbaru
+            ->latest()
             ->get();
 
         return response()->json($rentals);
     }
+
     // ADMIN: Lihat semua transaksi
     public function indexAdmin()
     {
         return response()->json(
-            Rental::with(['user', 'car'])->latest()->get()
+            Rental::with(['user', 'car', 'car.brand'])->latest()->get()
         );
     }
 
     // USER: Booking Mobil
-    public function store(Request $request) 
+    public function store(Request $request)
     {
-        // 1. VALIDASI LANGSUNG DI SINI (Tanpa file terpisah)
         $request->validate([
             'car_id' => 'required|exists:cars,id',
             'start_date' => 'required|date|after_or_equal:today',
-            'end_date' => 'required|date|after:start_date',
+            'end_date' => 'required|date|after_or_equal:start_date', // Boleh sama hari (sewa 1 hari)
         ]);
 
         $car = Car::findOrFail($request->car_id);
-        
-        // 2. Hitung selisih hari
+
+        // 1. Cek Ketersediaan (Date Overlap Logic)
+        // Rumus Overlap: (StartA <= EndB) and (EndA >= StartB)
+        // Kita cari booking yang "overlap" dengan request user. Kalau ada, berarti GAK BISA sewa.
+        $isBooked = Rental::where('car_id', $car->id)
+            ->whereIn('status', ['pending', 'paid', 'active']) // Hanya status aktif yang nge-blok jadwal
+            ->where(function ($query) use ($request) {
+            $query->whereBetween('start_date', [$request->start_date, $request->end_date])
+                ->orWhereBetween('end_date', [$request->start_date, $request->end_date])
+                ->orWhere(function ($q) use ($request) {
+                $q->where('start_date', '<', $request->start_date)
+                    ->where('end_date', '>', $request->end_date);
+            }
+            );
+        })
+            ->exists();
+
+        if ($isBooked) {
+            return response()->json([
+                'message' => 'Mobil tidak tersedia pada tanggal tersebut. Silahkan pilih tanggal lain.'
+            ], 422);
+        }
+
+        // 2. Hitung Total Harga
         $start = new \DateTime($request->start_date);
         $end = new \DateTime($request->end_date);
-        $days = $end->diff($start)->days;
-        
-        // Jaga-jaga kalau user iseng input tanggal sama
-        if ($days < 1) $days = 1;
+        // Tambah 1 hari karena kalau tgl 10-10 itu dihitung 1 hari sewa
+        $days = $end->diff($start)->days + 1;
 
         $total = $days * $car->price_per_day;
 
@@ -61,52 +80,50 @@ class RentalController extends Controller
             'status' => 'pending'
         ]);
 
-        // 4. Update status mobil jadi tidak tersedia
-        $car->update(['is_available' => false]);
+        // JANGAN update $car->is_available = false di sini. 
+        // Biarkan mobil tetap "available" secara global, tapi "booked" di tanggal tertentu.
 
-        return response()->json($rental, 201);
+        return response()->json([
+            'message' => 'Booking berhasil dibuat.',
+            'data' => $rental
+        ], 201);
     }
 
     // ADMIN: Update status transaksi
     public function update(Request $request, $id)
     {
         $rental = Rental::findOrFail($id);
-        
+
         $request->validate([
             'status' => 'required|in:pending,paid,active,completed,cancelled'
         ]);
 
         $rental->update(['status' => $request->status]);
 
-        // Jika status 'active', mobil jadi tidak tersedia
-        if ($request->status === 'active') {
-            $rental->car()->update(['is_available' => false]);
-        }
-        // Jika status 'completed' atau 'cancelled', mobil tersedia lagi
-        if (in_array($request->status, ['completed', 'cancelled'])) {
-            $rental->car()->update(['is_available' => true]);
-        }
+        // Kita tidak perlu mainin flag is_available di table cars lagi.
+        // Availability murni dicek dari jadwal rental.
 
-        return response()->json($rental);
+        return response()->json([
+            'message' => 'Status rental berhasil diperbarui.',
+            'data' => $rental
+        ]);
     }
+
     public function destroy(string $id)
     {
-        // Cari data rental berdasarkan ID
         $rental = Rental::find($id);
 
-        // Cek apakah data ada?
         if (!$rental) {
             return response()->json(['message' => 'Data not found'], 404);
         }
 
-        // (Opsional) Cek apakah status masih pending? Biar gak bisa cancel kalau udah dipake
+        // Hanya boleh cancel kalau status masih pending
         if ($rental->status !== 'pending') {
-            return response()->json(['message' => 'Tidak bisa membatalkan pesanan yang sedang berjalan/selesai'], 400);
+            return response()->json(['message' => 'Tidak bisa membatalkan pesanan yang sudah diproses.'], 400);
         }
 
-        // Hapus data
         $rental->delete();
 
-        return response()->json(['message' => 'Booking cancelled successfully']);
+        return response()->json(['message' => 'Booking berhasil dibatalkan.']);
     }
 }

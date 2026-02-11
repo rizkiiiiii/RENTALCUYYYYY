@@ -9,40 +9,38 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-    public function register(Request $request) {
-        try {
-            $request->validate([
-                'name' => 'required',
-                'email' => 'required|email|unique:users',
-                'password' => 'required|min:6',
-            ]);
-        } catch (ValidationException $e) {
-            if ($e->validator->errors()->has('email')) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Email sudah terdaftar',
-                    'errors' => $e->validator->errors()
-                ], 422);
-            }
-            throw $e;
+    public function register(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email',
+            'password' => 'required|string|min:6',
+            'avatar' => 'nullable|image|mimes:jpeg,png,jpg|max:2048' // Optional avatar registration
+        ]);
+
+        $avatarPath = null;
+        if ($request->hasFile('avatar')) {
+            $avatarPath = $request->file('avatar')->store('avatars', 'public');
         }
 
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
-            'role' => 'user'
+            'role' => 'user', // Default role
+            'avatar' => $avatarPath
         ]);
 
         return response()->json([
             'status' => true,
-            'message' => 'Berhasil, data user berhasil dibuat',
+            'message' => 'Registrasi berhasil.',
             'token' => $user->createToken('auth_token')->plainTextToken,
             'user' => $user
         ], 201);
     }
 
-    public function login(Request $request) {
+    public function login(Request $request)
+    {
         $request->validate([
             'email' => 'required|email',
             'password' => 'required',
@@ -50,37 +48,30 @@ class AuthController extends Controller
 
         $user = User::where('email', $request->email)->first();
 
-        // Email tidak ditemukan
-        if (!$user) {
+        // Cek User & Password
+        if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json([
                 'status' => false,
-                'message' => 'Email tidak terdaftar',
-            ], 404);
-        }
-
-        // Password salah
-        if (!Hash::check($request->password, $user->password)) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Password salah',
+                'message' => 'Email atau Password salah.',
             ], 401);
         }
 
-        // Login berhasil
         return response()->json([
             'status' => true,
-            'message' => 'Berhasil login',
+            'message' => 'Login berhasil.',
             'token' => $user->createToken('auth_token')->plainTextToken,
             'user' => $user
         ], 200);
     }
 
-    public function logout(Request $request) {
+    public function logout(Request $request)
+    {
+        // Hapus token yang sedang dipakai
         $request->user()->currentAccessToken()->delete();
 
         return response()->json([
             'status' => true,
-            'message' => 'Logged out'
+            'message' => 'Logout berhasil.'
         ]);
     }
 }

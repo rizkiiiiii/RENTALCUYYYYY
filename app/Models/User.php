@@ -16,14 +16,6 @@ class User extends Authenticatable
     // Kita pakai guarded id saja agar kolom lain (role, admin_type, dll) bisa diisi otomatis
     protected $guarded = ['id'];
 
-    protected $fillable = [
-        'name',
-        'email',
-        'password',
-        'avatar', // <--- PASTIIN INI ADA!
-                  // 'role',   // (Kalau ada kolom role)
-    ];
-
     /**
      * The attributes that should be hidden for serialization.
      *
@@ -43,7 +35,7 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
-            'password'          => 'hashed',
+            'password' => 'hashed',
         ];
     }
 }

@@ -4,37 +4,39 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BrandController;
 use App\Http\Controllers\Api\CarController;
 use App\Http\Controllers\Api\RentalController;
+use App\Http\Controllers\Api\ProfileController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-// Public
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
-Route::get('/cars', [CarController::class, 'index']);
-Route::get('/cars/{id}', [CarController::class, 'show']);
-Route::get('/brands', [BrandController::class, 'index']); // Pindahin ke sini biar rapi
-Route::post('/profile', [App\Http\Controllers\Api\ProfileController::class, 'update']);//update profile dan upload avatar
+/* |-------------------------------------------------------------------------- | API Routes |-------------------------------------------------------------------------- */
 
+// Public Routes
+Route::post('/register', [AuthController::class , 'register']);
+Route::post('/login', [AuthController::class , 'login']);
 
-// Protected (Login required)
+Route::get('/cars', [CarController::class , 'index']);
+Route::get('/cars/{id}', [CarController::class , 'show']);
+Route::get('/brands', [BrandController::class , 'index']);
+
+// Protected Routes (Login Required)
 Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/logout', [AuthController::class, 'logout']);
-    Route::get('/user', function (Request $request) {return $request->user();});
+    Route::post('/logout', [AuthController::class , 'logout']);
+    Route::get('/user', function (Request $request) {
+            return $request->user();
+        }
+        );
 
-    // ✅ FITUR USER & UMUM (JANGAN TARUH DI DALAM GROUP ADMIN!)
-    // Ini biar User bisa booking (store) dan lihat history (index)
-    Route::apiResource('rentals', RentalController::class);
+        // User Features
+        Route::post('/profile', [ProfileController::class , 'update']);
+        Route::apiResource('rentals', RentalController::class)->except(['create', 'edit']); // Standard Resource
+    
+        // Admin Features
+        Route::middleware(['role:admin'])->group(function () {
+            Route::post('/brands', [BrandController::class , 'store']);
+            Route::post('/cars', [CarController::class , 'store']);
 
-    // 🔒 Admin Only Features
-    Route::middleware(['role:admin'])->group(function () {
-        // Brand
-        Route::post('/brands', [BrandController::class, 'store']);
-
-        // Car
-        Route::post('/cars', [CarController::class, 'store']);
-
-        // Rental Management (Khusus Admin lihat semua)
-        Route::get('/admin/rentals', [RentalController::class, 'indexAdmin']);
-        Route::put('/rentals/{id}', [RentalController::class, 'update']);
-    });
-});
+            // Admin Rental Management
+            Route::get('/admin/rentals', [RentalController::class , 'indexAdmin']);
+            Route::put('/rentals/{id}', [RentalController::class , 'update']);
+        }
+        );    });
